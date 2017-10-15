@@ -1,0 +1,14 @@
+# Our patched nginx lives on AWS Ubuntu in /var/app/bin/nginx
+# and logs in /var/app/var/log/{cache, nginx-access, nginx-error}.log
+
+${:logdir}/*.log {
+    daily
+    rotate ${:rotate}
+    missingok
+    notifempty
+    compress
+    sharedscripts                          
+    postrotate
+        [ ! -f ${:pidpath} ] || ${:binpath} -s reopen
+    endscript
+}

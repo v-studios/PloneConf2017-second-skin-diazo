@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rules
+    xmlns="http://namespaces.plone.org/diazo"
+    xmlns:css="http://namespaces.plone.org/diazo/css"
+    xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+  
+  <xsl:output method="html" encoding="utf-8" indent="yes" />
+  
+  <theme href="theme/theme.html" />
+
+  <!-- Keep the site intact, with a minor tweek to replace the logo -->
+  <copy content="/html/head" theme="/html/head"/>
+  <copy content="/html/body" theme="/html/body"/>
+
+  <!-- Relace the V logo with the plone logo: 
+       this 'dynamically' replaces HTML since after doing the <copy/>
+       it appears we do not have our needed HTML.
+  -->
+  <replace css:content-children="#logo">
+    <a href="index.html">
+      <img src="./static/brand-82x68.png" width="199"/>
+    </a>
+  </replace>
+
+</rules>

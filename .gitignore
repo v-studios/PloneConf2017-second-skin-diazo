@@ -1,0 +1,17 @@
+*~
+*.egg-info
+.DS_Store
+.cache
+/.installed.cfg
+.pyc
+/.tox
+/.venv2
+__pycache__
+/bin/
+/develop-eggs/
+/eggs/
+!/eggs/diazo-1.2.2-py2.7.egg/diazo/defaults.xsl
+/etc/
+/parts/
+/var/
+tttdiazo_cache

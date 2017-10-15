@@ -1,0 +1,188 @@
+worker_processes  ${:workers};
+
+events {
+    worker_connections  ${:conns};
+}
+
+http {
+    include         mime.types;
+    default_type    application/octet-stream;
+    sendfile        on;
+    #tcp_nopush     on;
+
+    keepalive_timeout 65;
+
+    gzip             on;
+    gzip_min_length  1000;
+    gzip_proxied     any;
+
+    client_max_body_size        12m; 
+    client_body_buffer_size     128k;
+
+    # Change the log format to log the client IP, not the ELB IP
+    log_format standard '$http_x_forwarded_for - $remote_user [$time_local] '
+                    '"$request" $status $body_bytes_sent '
+                    '"$http_referer" "$http_user_agent"';
+
+    #######
+    # Diazo Theming backend
+    #######
+    server {
+        server_name  tttdiazo;
+        listen       ${:port};
+        root         ${buildout:directory}/theme;
+
+        # Enable custom access log format
+        access_log ${buildout:directory}/var/log/nginx-access.log standard;
+
+        # Use empty location blocks to avoid theming static assets from disk.
+        location /static-images  {}
+        location /fonts          {}
+        location /scripts        {}
+        location /styles         {}
+
+        # Don't theme sitemap.xml.
+        # Pserver work with <notheme/> in rules.xml nginx doesn't (why?)
+        # so we request the specific URL here for an unthemed proxy.
+        # Xslt module transform text/xml by default so we prevent that:
+        # same as "/" proxy but without xslt_* directives.
+        location /sitemap.xml {
+            proxy_pass ${:backend};
+            proxy_read_timeout ${:timeout};
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
+	# Theme all the pages.
+	# TODO: figure out how to apply the XSLT module to more than one
+	# location block so the static-ized routes can be served as-is from the
+	# compiled XSL file (no `proxy_pass` and friends) and the dynamic
+	# routes can be dynamically themed.
+
+        location / {
+	    # Enable XSLT to fix broken HTML and xform HTML in addition to text/xml.
+            xslt_html_parser on;
+            xslt_types text/html;
+
+	    # Tell the XSLT module which XSL file to use, and enable Diazo
+	    # rules.xml 'if-path' matching by setting set the 'path' variable
+	    # equal to this $uri.
+            xslt_stylesheet ${:themexsl} path='$uri';
+
+	    # Proxy each request back to origin before applying XSLT to it.
+	    # Necessary so dynamic content will be generated. Not necessary for
+	    # static-ized routes, but won't break them either.
+            proxy_pass ${:backend};
+            proxy_read_timeout ${:timeout};
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+            # We must not globally hide/ignore Set-Cookie; this doesn't seem
+            # required but explicit is better than implicit.
+            proxy_pass_header Set-Cookie;
+        }
+    }
+
+    # Enable tttdiazo-cache, to cache content from tttdiazo_api backend
+    # keys_zone=tttdiazo-cache:1m : stores up to 1 Million cache records
+    # inactive=1d                 : removes cached content after 1d day of inactivity 
+    # max_size=1g                 : stores a max on 1 GB of cached data
+
+    proxy_cache_path ${buildout:directory}/tttdiazo_cache levels=1:2 keys_zone=tttdiazo_cache:1m inactive=1d max_size=1g;
+    proxy_cache_key "$request_method$host$request_uri";
+    proxy_cache_valid 200 301 302 1d; 
+
+    proxy_ignore_headers Cache-Control;
+    proxy_hide_header    Cache-Control;
+
+    # Custom log format for proxy_cache records
+    log_format cache '***$time_local '
+                     '$upstream_cache_status '
+                     'Cache-Control: $upstream_http_cache_control '
+                     'Expires: $upstream_http_expires '
+                     '"$request" ($status) '
+                     '"$http_user_agent" ';
+
+    # Increase proxy_headers - nginx dies otherwise
+    proxy_headers_hash_max_size 2048;
+    proxy_headers_hash_bucket_size 512;
+
+    #######
+    # 301 Redirect Server for alt names
+    #######
+    # Return 301 Redirect for all valid hostnames owned by TTT, except the canonical name : www.LuxuryHomeExchange.com
+    server {
+        server_name TradeToTravel.com         *.TradeToTravel.com
+                    BoutiqueHotelExchange.com *.BoutiqueHotelExchange.com
+                    LuxuryHomeExchange.com    *.LuxuryHomeExchange.com
+                    LuxuryHomeExchanges.com   *.LuxuryHomeExchanges.com;
+
+        listen ${:tttdiazo-cache-port};
+        listen ${:tttdiazo-ssl-port};
+
+        return 301 https://www.LuxuryHomeExchange.com$request_uri;
+        access_log ${buildout:directory}/var/log/nginx-redirect.log combined;
+    }
+
+    #######
+    # Main HTTP/HTTPS server frontend
+    #######
+    server {
+        server_name tttdiazo_cache www.LuxuryHomeExchange.com;
+        listen ${:tttdiazo-ssl-port} default_server;
+        listen ${:tttdiazo-cache-port} default_server;
+
+        ### Begin Synthetic two part conditional
+        # if the port is not SSL AND hostname is canonical, then redirest to SSL port
+        if ( $server_port = ${:tttdiazo-cache-port} ) {
+            set $needs_redir one;
+        }
+
+	# Use "~*" instead of "=" for case-insensitive matching of variable value
+        if ( $http_host ~* www.LuxuryHomeExchange.com ) {
+            set $needs_redir "$${:needs_redir}two";
+        }
+
+        if ( $needs_redir = onetwo ) {
+            return 301 https://www.LuxuryHomeExchange.com$request_uri;
+        }
+        ### End synthetic conditional
+
+        location / {
+            proxy_pass http://127.0.0.1:${:port};
+        }
+
+        #######
+	# Optional Include vMessage configs
+        ### BEGIN
+	include /usr/local/messagem8/vmessage/*;
+        ### END
+
+        location /index.html {
+            return 301 https://www.LuxuryHomeExchange.com/;
+        }
+
+        location ~ ^(/images/|/photos/) { 
+
+            # tttdiazo_cache proxy_cache config
+            proxy_cache tttdiazo_cache;
+
+            # proxy_params includes Host, X-Forwarded-For, etc.
+            #include proxy_params;
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Pull content from tttdiazo nginx server;
+            proxy_pass http://127.0.0.1:${:port};
+
+            access_log ${buildout:directory}/var/log/cache.log cache;
+
+            add_header X-Proxy-Cache-Status $upstream_cache_status;
+            add_header Cache-Control "public, max-age=300, s-maxage=600";
+        }
+
+    }
+
+}

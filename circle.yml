@@ -1,0 +1,27 @@
+# Install docker for integration tests.
+machine:
+  services:
+    - docker
+# Run tests.
+test:
+  pre:
+    # Start a diazo server in a container for integration tests to query.
+    - make docker_build
+    - make docker_run:
+        background: true
+  override:
+    # Run unit & functional tests.
+    - tox
+    # Run integration tests.
+    - ./tests/integration_tests.py
+deployment:
+  production:
+    branch: master
+    codedeploy:
+      TTTDiazo:
+        deployment_group: Prod
+  stage:
+    branch: develop
+    codedeploy:
+      TTTDiazo:
+        deployment_group: Stage

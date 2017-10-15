@@ -1,0 +1,12 @@
+.git
+.installed.cfg
+.tox
+.venv2
+.venv3
+bin
+etc
+develop-eggs
+eggs
+infra
+parts
+var
