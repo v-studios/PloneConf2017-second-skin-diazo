@@ -34,8 +34,10 @@ http {
 
         # Enable custom access log format
         access_log ${buildout:directory}/var/log/nginx-access.log standard;
+        error_log  ${buildout:directory}/var/log/nginx-error.log warn;
 
         # Use empty location blocks to avoid theming static assets from disk.
+        location /static         {}
         location /static-images  {}
         location /fonts          {}
         location /scripts        {}
@@ -49,7 +51,8 @@ http {
         location /sitemap.xml {
             proxy_pass ${:backend};
             proxy_read_timeout ${:timeout};
-            proxy_set_header Host $host;
+            # proxy_set_header Host $host;
+            proxy_set_header Host ${:backend_host};
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         }
 
@@ -60,6 +63,8 @@ http {
 	# routes can be dynamically themed.
 
         location / {
+            error_log  ${buildout:directory}/var/log/nginx-xslt.log warn;
+
 	    # Enable XSLT to fix broken HTML and xform HTML in addition to text/xml.
             xslt_html_parser on;
             xslt_types text/html;
@@ -74,7 +79,9 @@ http {
 	    # static-ized routes, but won't break them either.
             proxy_pass ${:backend};
             proxy_read_timeout ${:timeout};
-            proxy_set_header Host $host;
+            # in dev conn to localhost:8888, sends backend name to backend
+            # proxy_set_header Host $host;
+            proxy_set_header Host ${:backend_host};
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
             # We must not globally hide/ignore Set-Cookie; this doesn't seem
@@ -110,25 +117,23 @@ http {
     #######
     # 301 Redirect Server for alt names
     #######
-    # Return 301 Redirect for all valid hostnames owned by TTT, except the canonical name : www.LuxuryHomeExchange.com
-    server {
-        server_name TradeToTravel.com         *.TradeToTravel.com
-                    BoutiqueHotelExchange.com *.BoutiqueHotelExchange.com
-                    LuxuryHomeExchange.com    *.LuxuryHomeExchange.com
-                    LuxuryHomeExchanges.com   *.LuxuryHomeExchanges.com;
+    # Return 301 Redirect for all valid hostnames owned by TTT, except the canonical name
+    # server {
+    #     # server_name CLIENTNAME.com         *.CLIENTNAME.com
+    #     #             ALIASNAME.com          *.ALIASNAME.com;
 
-        listen ${:tttdiazo-cache-port};
-        listen ${:tttdiazo-ssl-port};
+    #     listen ${:tttdiazo-cache-port};
+    #     listen ${:tttdiazo-ssl-port};
 
-        return 301 https://www.LuxuryHomeExchange.com$request_uri;
-        access_log ${buildout:directory}/var/log/nginx-redirect.log combined;
-    }
+    #     #return 301 https://www.CANONICALNAME.com$request_uri;
+    #     access_log ${buildout:directory}/var/log/nginx-redirect.log combined;
+    # }
 
     #######
     # Main HTTP/HTTPS server frontend
     #######
     server {
-        server_name tttdiazo_cache www.LuxuryHomeExchange.com;
+        server_name tttdiazo_cache;
         listen ${:tttdiazo-ssl-port} default_server;
         listen ${:tttdiazo-cache-port} default_server;
 
@@ -139,28 +144,23 @@ http {
         }
 
 	# Use "~*" instead of "=" for case-insensitive matching of variable value
-        if ( $http_host ~* www.LuxuryHomeExchange.com ) {
+        if ( $http_host ~* www.CANONICALNAME.com ) {
             set $needs_redir "$${:needs_redir}two";
         }
 
-        if ( $needs_redir = onetwo ) {
-            return 301 https://www.LuxuryHomeExchange.com$request_uri;
-        }
+        # if ( $needs_redir = onetwo ) {
+        #     return 301 https://www.CANONICALNAME.com$request_uri;
+        # }
         ### End synthetic conditional
 
         location / {
             proxy_pass http://127.0.0.1:${:port};
         }
 
-        #######
-	# Optional Include vMessage configs
-        ### BEGIN
-	include /usr/local/messagem8/vmessage/*;
-        ### END
 
-        location /index.html {
-            return 301 https://www.LuxuryHomeExchange.com/;
-        }
+        # location /index.html {
+        #     return 301 https://www.CANONICALNAME.com/;
+        # }
 
         location ~ ^(/images/|/photos/) { 
 
@@ -169,7 +169,8 @@ http {
 
             # proxy_params includes Host, X-Forwarded-For, etc.
             #include proxy_params;
-            proxy_set_header Host $http_host;
+            # proxy_set_header Host $http_host;
+            proxy_set_header Host ${:backend_host};
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;

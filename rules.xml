@@ -16,9 +16,10 @@
        this 'dynamically' replaces HTML since after doing the <copy/>
        it appears we do not have our needed HTML.
   -->
+  <!-- <notheme if-path="/static-images/brand-82x68.png"/> -->
   <replace css:content-children="#logo">
     <a href="index.html">
-      <img src="./static/brand-82x68.png" width="199"/>
+      <img src="/static/brand-82x68.png" width="199"/>
     </a>
   </replace>
 

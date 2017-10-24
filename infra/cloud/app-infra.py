@@ -562,8 +562,8 @@ class Infra:
 
     ###########################################################################
     # We need a DNS name for the origin server since we'll take over the
-    # canonical name later. Point Diazo at it and use tradetotravel.com set to
-    # localhost in /etc/hosts for development.
+    # canonical name later. Point Diazo at it and use the name we'll take over
+    # set to localhost in /etc/hosts for development.
 
     def add_dns_ttt(self):
         name, tags = self._name_tags('dns_ttt')
